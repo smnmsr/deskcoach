@@ -1,0 +1,9 @@
+PyQt6
+httpx
+APScheduler
+winsdk
+pyinstaller
+platformdirs
+tomli
+pyqtdarktheme
+PyInstaller

@@ -1,0 +1,12 @@
+[app]
+base_url = "http://moss_table_watcher.zhaw.ch"
+poll_minutes = 1.0
+stand_threshold_mm = 850
+remind_after_minutes = 45
+remind_repeat_minutes = 5
+standing_check_after_minutes = 5
+standing_check_repeat_minutes = 2
+snooze_minutes = 30
+play_sound = true
+use_windows_toast = true
+log_level = "WARNING"
