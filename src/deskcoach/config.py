@@ -34,6 +34,7 @@ remind_repeat_minutes = 5
 standing_check_after_minutes = 5
 standing_check_repeat_minutes = 2
 snooze_minutes = 30
+lock_reset_threshold_minutes = 5
 play_sound = true
 use_windows_toast = true
 log_level = "WARNING"
@@ -125,6 +126,7 @@ def load_config(path: Optional[Path | str] = None) -> SimpleNamespace:
     remind_after_minutes = int(app.get("remind_after_minutes", 45))
     remind_repeat_minutes = int(app.get("remind_repeat_minutes", 5))
     snooze_minutes = int(app.get("snooze_minutes", 30))
+    lock_reset_threshold_minutes = int(app.get("lock_reset_threshold_minutes", 5))
     play_sound = bool(app.get("play_sound", True))
     use_windows_toast = bool(app.get("use_windows_toast", True))
     standing_check_after_minutes = int(app.get("standing_check_after_minutes", 30))
@@ -139,6 +141,7 @@ def load_config(path: Optional[Path | str] = None) -> SimpleNamespace:
             remind_after_minutes=remind_after_minutes,
             remind_repeat_minutes=remind_repeat_minutes,
             snooze_minutes=snooze_minutes,
+            lock_reset_threshold_minutes=lock_reset_threshold_minutes,
             play_sound=play_sound,
             use_windows_toast=use_windows_toast,
             standing_check_after_minutes=standing_check_after_minutes,
@@ -147,7 +150,7 @@ def load_config(path: Optional[Path | str] = None) -> SimpleNamespace:
         )
     )
     log.debug(
-        "Loaded config: base_url=%s, poll_minutes=%s, stand_threshold_mm=%s, remind_after=%s, repeat=%s, snooze=%s, play_sound=%s, toast=%s, stand_after=%s, stand_repeat=%s, log_level=%s",
-        base_url, poll_minutes, stand_threshold_mm, remind_after_minutes, remind_repeat_minutes, snooze_minutes, play_sound, use_windows_toast, standing_check_after_minutes, standing_check_repeat_minutes, log_level,
+        "Loaded config: base_url=%s, poll_minutes=%s, stand_threshold_mm=%s, remind_after=%s, repeat=%s, snooze=%s, lock_reset_threshold_minutes=%s, play_sound=%s, toast=%s, stand_after=%s, stand_repeat=%s, log_level=%s",
+        base_url, poll_minutes, stand_threshold_mm, remind_after_minutes, remind_repeat_minutes, snooze_minutes, lock_reset_threshold_minutes, play_sound, use_windows_toast, standing_check_after_minutes, standing_check_repeat_minutes, log_level,
     )
     return ns

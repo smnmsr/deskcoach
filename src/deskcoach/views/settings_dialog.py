@@ -62,6 +62,10 @@ class SettingsDialog(QDialog):
         self.snooze_minutes.setRange(1, 600)
         self.snooze_minutes.setValue(int(getattr(appcfg, "snooze_minutes", 30)))
 
+        self.lock_reset_threshold_minutes = QSpinBox()
+        self.lock_reset_threshold_minutes.setRange(0, 1440)
+        self.lock_reset_threshold_minutes.setValue(int(getattr(appcfg, "lock_reset_threshold_minutes", 5)))
+
         self.play_sound = QCheckBox("Play sound in notifications")
         self.play_sound.setChecked(bool(getattr(appcfg, "play_sound", True)))
 
@@ -88,6 +92,7 @@ class SettingsDialog(QDialog):
         layout.addRow("Standing check after (minutes)", self.standing_check_after_minutes)
         layout.addRow("Standing check repeat (minutes)", self.standing_check_repeat_minutes)
         layout.addRow("Snooze default (minutes)", self.snooze_minutes)
+        layout.addRow("Lock reset threshold (minutes)", self.lock_reset_threshold_minutes)
         layout.addRow("Log level", self.log_level)
         layout.addRow(self.play_sound)
         layout.addRow(self.use_windows_toast)
@@ -115,6 +120,7 @@ class SettingsDialog(QDialog):
                 f"standing_check_after_minutes = {int(self.standing_check_after_minutes.value())}\n"
                 f"standing_check_repeat_minutes = {int(self.standing_check_repeat_minutes.value())}\n"
                 f"snooze_minutes = {int(self.snooze_minutes.value())}\n"
+                f"lock_reset_threshold_minutes = {int(self.lock_reset_threshold_minutes.value())}\n"
                 f"play_sound = {'true' if self.play_sound.isChecked() else 'false'}\n"
                 f"use_windows_toast = {'true' if self.use_windows_toast.isChecked() else 'false'}\n"
                 f"log_level = \"{getattr(self.log_level, 'currentText', lambda: 'INFO')()}\"\n"

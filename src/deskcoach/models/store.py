@@ -1,14 +1,12 @@
-"""SQLite persistence for measurements.
+"""SQLite persistence for measurements and session events.
 
-Stores time series of desk height measurements.
+Stores time series of desk height measurements and lock/unlock session events.
 """
 from __future__ import annotations
 
 import logging
-import os
 import sqlite3
 from pathlib import Path
-from typing import Tuple
 
 from platformdirs import PlatformDirs
 
@@ -42,6 +40,7 @@ def init_db() -> Path:
     existed = path.exists()
     conn = sqlite3.connect(path)
     try:
+        # Measurements table
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS measurements (
@@ -50,6 +49,17 @@ def init_db() -> Path:
             )
             """
         )
+        # Session events table: event is 'LOCK' or 'UNLOCK'
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS session_events (
+                ts INTEGER NOT NULL,
+                event TEXT NOT NULL CHECK (event IN ('LOCK','UNLOCK'))
+            )
+            """
+        )
+        # Helpful index for recent queries
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_session_events_ts ON session_events(ts)")
         conn.commit()
     finally:
         conn.close()
@@ -60,7 +70,8 @@ def init_db() -> Path:
     return path
 
 
-essql = "INSERT INTO measurements(ts, height_mm) VALUES (?, ?)"
+_essql = "INSERT INTO measurements(ts, height_mm) VALUES (?, ?)"
+_sesql = "INSERT INTO session_events(ts, event) VALUES (?, ?)"
 
 
 def save_measurement(ts: int, height_mm: int) -> None:
@@ -75,6 +86,21 @@ def save_measurement(ts: int, height_mm: int) -> None:
     """
     path = db_path()
     with sqlite3.connect(path) as conn:
-        conn.execute(essql, (ts, height_mm))
+        conn.execute(_essql, (ts, height_mm))
         conn.commit()
     log.debug("Saved measurement ts=%s height_mm=%s", ts, height_mm)
+
+
+def save_session_event(ts: int, event: str) -> None:
+    """Persist a session event ('LOCK' or 'UNLOCK')."""
+    ev = event.upper()
+    if ev not in ("LOCK", "UNLOCK"):
+        raise ValueError(f"Invalid session event: {event}")
+    path = db_path()
+    try:
+        with sqlite3.connect(path) as conn:
+            conn.execute(_sesql, (ts, ev))
+            conn.commit()
+        log.debug("Saved session event ts=%s event=%s", ts, ev)
+    except Exception as e:  # pragma: no cover - defensive
+        log.debug("Failed to save session event: %s", e)

@@ -9,6 +9,15 @@ from typing import Optional
 from PyQt6.QtCore import QObject, QAbstractNativeEventFilter, QCoreApplication, Qt, pyqtSignal as Signal
 from PyQt6.QtWidgets import QWidget
 
+# Optional import to persist session events
+try:
+    from ..models import store  # when running as package
+except Exception:  # pragma: no cover
+    try:
+        from deskcoach.models import store  # type: ignore
+    except Exception:
+        store = None  # type: ignore
+
 log = logging.getLogger(__name__)
 
 # Windows message and WTS constants
@@ -117,6 +126,13 @@ class SessionWatcher(QObject):
             return
         self._unlocked = False
         self._lock_changed_at = datetime.now()
+        # Persist event
+        try:
+            if store is not None:
+                ts = int(self._lock_changed_at.timestamp())
+                store.save_session_event(ts, "LOCK")  # type: ignore[attr-defined]
+        except Exception as e:  # pragma: no cover
+            log.debug("Failed to save LOCK event: %s", e)
         log.info("Session locked: pausing polling and reminders.")
         self.session_locked.emit()
 
@@ -125,6 +141,13 @@ class SessionWatcher(QObject):
             return
         self._unlocked = True
         self._lock_changed_at = datetime.now()
+        # Persist event
+        try:
+            if store is not None:
+                ts = int(self._lock_changed_at.timestamp())
+                store.save_session_event(ts, "UNLOCK")  # type: ignore[attr-defined]
+        except Exception as e:  # pragma: no cover
+            log.debug("Failed to save UNLOCK event: %s", e)
         log.info("Session unlocked: resuming polling and reminders.")
         self.session_unlocked.emit()
 
