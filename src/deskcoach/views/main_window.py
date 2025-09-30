@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QPushButton
-from PyQt6.QtGui import QDesktopServices
-from PyQt6.QtCore import QUrl
 from pathlib import Path
 
 from .settings_dialog import SettingsDialog
@@ -38,6 +36,8 @@ class MainWindow(QMainWindow):
 
     def open_data_folder(self) -> None:
         try:
+            from PyQt6.QtGui import QDesktopServices
+            from PyQt6.QtCore import QUrl
             folder = store.db_path().parent
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
         except Exception:

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from types import SimpleNamespace
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -16,7 +15,13 @@ try:  # Pythonic resource access for packaged data
 except Exception:  # pragma: no cover
     resources = None  # type: ignore
 
+from platformdirs import PlatformDirs
+
 log = logging.getLogger(__name__)
+
+CONFIG_FILENAME = "config.toml"
+APP_NAME = "DeskCoach"
+APP_AUTHOR = "DeskCoach"
 
 # Embedded default config as a safe fallback when running from a single-file bundle
 _DEFAULT_CONFIG_TOML = b"""
@@ -44,36 +49,34 @@ def _load_from_path(p: Path) -> Dict[str, Any]:
         return tomllib.load(f)
 
 
+def _data_dir() -> Path:
+    dirs = PlatformDirs(appname=APP_NAME, appauthor=APP_AUTHOR, roaming=False)
+    p = Path(dirs.user_data_dir)
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
 def _candidate_config_paths() -> list[Path]:
-    """Return likely config paths in decreasing priority for default lookup."""
+    """Return likely config paths in decreasing priority for default lookup (excluding data folder)."""
     candidates: list[Path] = []
     # 1) Project root (development runs)
     try:
         dev_root = Path(__file__).resolve().parents[2]
-        candidates.append(dev_root / "config.toml")
+        candidates.append(dev_root / CONFIG_FILENAME)
     except Exception:
         pass
-    # 2) PyInstaller one-file extracted dir (_MEIPASS)
-    try:
-        meipass = Path(getattr(sys, "_MEIPASS", ""))  # type: ignore[name-defined]
-        if meipass:
-            candidates.append(meipass / "config.toml")
-    except Exception:
-        pass
-    # 3) Beside the executable (one-folder build)
-    try:
-        exe_dir = Path(getattr(sys, "executable", ""))  # type: ignore[name-defined]
-        if exe_dir:
-            candidates.append(Path(exe_dir).resolve().parent / "config.toml")
-    except Exception:
-        pass
-    # 4) Package resources (src/deskcoach/resources)
+    # 2) Package resources (src/deskcoach/resources)
     try:
         pkg_res_dir = Path(__file__).resolve().parents[1] / "resources"
-        candidates.append(pkg_res_dir / "config.toml")
+        candidates.append(pkg_res_dir / CONFIG_FILENAME)
     except Exception:
         pass
     return candidates
+
+
+def _write_default_to(path: Path) -> None:
+    path.write_bytes(_DEFAULT_CONFIG_TOML)
+    log.info("Created default config at %s", path)
 
 
 def load_config(path: Optional[Path | str] = None) -> SimpleNamespace:
@@ -81,8 +84,7 @@ def load_config(path: Optional[Path | str] = None) -> SimpleNamespace:
 
     Behavior:
     - If an explicit `path` is provided and the file doesn't exist, raise FileNotFoundError (preserves tests).
-    - If `path` is None, try multiple default locations suitable for dev, PyInstaller, and packaged runs.
-      If none exist, fall back to an embedded default config.
+    - If `path` is None, prefer the user data folder; if no config exists there, create it from defaults and load it. If that fails, fall back to embedded defaults.
     """
     data: Dict[str, Any]
 
@@ -92,30 +94,28 @@ def load_config(path: Optional[Path | str] = None) -> SimpleNamespace:
             raise FileNotFoundError(f"Config file not found at {cfg_path}")
         data = _load_from_path(cfg_path)
     else:
-        # Try candidate locations
-        for cand in _candidate_config_paths():
-            try:
-                if cand.exists():
-                    data = _load_from_path(cand)
-                    break
-            except Exception:
-                continue
+        # Prefer data folder
+        data_dir = _data_dir()
+        user_cfg = data_dir / CONFIG_FILENAME
+        if user_cfg.exists():
+            data = _load_from_path(user_cfg)
         else:
-            # Try importlib.resources: deskcoach/resources/config.toml (optional)
-            loaded = False
-            try:
-                if resources is not None and resources.files:  # type: ignore[attr-defined]
-                    from importlib.resources import files
-                    res_pkg = files("deskcoach.resources") / "config.toml"
-                    if res_pkg.is_file():
-                        data = tomllib.loads(res_pkg.read_text("utf-8"))
-                        loaded = True
-            except Exception:
-                loaded = False
-            if not loaded:
-                # Fall back to embedded defaults
-                data = _read_toml_bytes(_DEFAULT_CONFIG_TOML)
-                log.warning("Using embedded default config; external config.toml not found.")
+            # Try additional candidates to seed from (e.g., project root or packaged resource)
+            seeded = False
+            for cand in _candidate_config_paths():
+                try:
+                    if cand.exists():
+                        user_cfg.write_bytes(Path(cand).read_bytes())
+                        log.info("Copied default config from %s to %s", cand, user_cfg)
+                        seeded = True
+                        break
+                except Exception:
+                    continue
+            if not seeded:
+                # Write embedded default
+                _write_default_to(user_cfg)
+            # Load the now-present config
+            data = _load_from_path(user_cfg)
 
     # Minimal validation and defaults
     app = data.get("app", {})

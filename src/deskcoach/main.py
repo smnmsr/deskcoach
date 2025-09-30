@@ -16,7 +16,7 @@ except Exception:
 
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QStyle, QMainWindow, QWidget, QVBoxLayout, QPushButton, QDialog, QFormLayout, QLineEdit, QDoubleSpinBox, QSpinBox, QCheckBox, QMessageBox, QHBoxLayout
-from PyQt6.QtGui import QIcon, QAction, QPixmap
+from PyQt6.QtGui import QIcon, QAction
 
 try:
     from .app import build_app

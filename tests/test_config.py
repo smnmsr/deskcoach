@@ -6,6 +6,8 @@ import os
 import pytest
 
 from deskcoach.config import load_config
+import importlib
+import deskcoach.config as cfgmod
 
 
 def write_tmp_config(tmp_path: Path, content: str) -> Path:
@@ -48,3 +50,54 @@ def test_load_config_missing_file_raises(tmp_path: Path):
     missing = tmp_path / "does_not_exist.toml"
     with pytest.raises(FileNotFoundError):
         load_config(missing)
+
+
+def test_load_config_creates_in_data_dir_when_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    data_dir = tmp_path / "data"
+
+    class DummyPlatformDirs:
+        def __init__(self, appname: str, appauthor: str, roaming: bool = False):
+            self.user_data_dir = str(data_dir)
+
+    monkeypatch.setattr(cfgmod, "PlatformDirs", DummyPlatformDirs)
+
+    # Ensure clean
+    assert not (data_dir / "config.toml").exists()
+
+    ns = load_config().app
+    # File now exists
+    cfg_file = data_dir / "config.toml"
+    assert cfg_file.exists()
+    # Defaults applied (from embedded or package)
+    assert isinstance(ns.remind_after_minutes, int)
+    assert ns.snooze_minutes == 30
+
+
+def test_load_config_uses_existing_in_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    cfg_text = textwrap.dedent(
+        """
+        [app]
+        base_url = "http://from-data-dir"
+        poll_minutes = 3.5
+        snooze_minutes = 15
+        play_sound = false
+        use_windows_toast = false
+        """
+    )
+    (data_dir / "config.toml").write_text(cfg_text, encoding="utf-8")
+
+    class DummyPlatformDirs:
+        def __init__(self, appname: str, appauthor: str, roaming: bool = False):
+            self.user_data_dir = str(data_dir)
+
+    monkeypatch.setattr(cfgmod, "PlatformDirs", DummyPlatformDirs)
+
+    ns = load_config().app
+    assert ns.base_url == "http://from-data-dir"
+    assert ns.poll_minutes == 3.5
+    assert ns.snooze_minutes == 15
+    assert ns.play_sound is False
+    assert ns.use_windows_toast is False
