@@ -70,11 +70,28 @@ def create_tray_icon(app: QApplication) -> QSystemTrayIcon:
 
     tray = QSystemTrayIcon(icon, app)
 
-    # Context menu with Exit action; additional actions will be added in main()
+    # Context menu with Close action; additional actions will be added in main()
     menu = QMenu()
-    exit_action = QAction("Exit", menu)
-    exit_action.triggered.connect(app.quit)
-    menu.addAction(exit_action)
+    close_action = QAction("Close", menu)
+
+    def _confirm_quit():
+        try:
+            from PyQt6.QtWidgets import QMessageBox
+            res = QMessageBox.question(
+                None,
+                "Quit DeskCoach",
+                "Are you sure you want to close DeskCoach?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if res == QMessageBox.StandardButton.Yes:
+                app.quit()
+        except Exception:
+            # Fallback: do nothing if confirmation fails
+            pass
+
+    close_action.triggered.connect(_confirm_quit)
+    menu.addAction(close_action)
 
     tray.setContextMenu(menu)
     tray.setToolTip("DeskCoach")
@@ -154,8 +171,6 @@ def main() -> int:
     watcher = SessionWatcher()
     reminder_engine = ReminderEngine(cfg, watcher)
 
-    # State for user-paused polling
-    state = {"paused": False}
 
     # Extend tray menu with actions
     menu = tray.contextMenu()
@@ -175,63 +190,7 @@ def main() -> int:
         main_window.activateWindow()
     open_action.triggered.connect(open_main_window)
 
-    # Settings action
-    settings_action = QAction("Settings…", menu)
-    def open_settings():
-        dlg = SettingsDialog(main_window, app_state["ns"])
-        if dlg.exec() == QDialog.Accepted:
-            # Reload config and apply live
-            new_ns = load_config()
-            app_state["ns"] = new_ns
-            app_state["cfg"] = new_ns.app
-            main_window._cfg_ns = new_ns
-            # Update timer interval
-            new_interval_ms = int(max(0.001, float(app_state["cfg"].poll_minutes)) * 60_000)
-            if new_interval_ms <= 0:
-                new_interval_ms = 1
-            timer.setInterval(new_interval_ms)
-            # Update snooze default and label
-            app_state["snooze_minutes"] = int(getattr(app_state["cfg"], "snooze_minutes", 30))
-            snooze_action.setText(f"Snooze {app_state['snooze_minutes']} min")
-            # Update ReminderEngine config
-            try:
-                rcfg = reminder_engine.cfg
-                rcfg.stand_threshold_mm = int(getattr(app_state["cfg"], "stand_threshold_mm", rcfg.stand_threshold_mm))
-                rcfg.remind_after_minutes = int(getattr(app_state["cfg"], "remind_after_minutes", rcfg.remind_after_minutes))
-                rcfg.remind_repeat_minutes = int(getattr(app_state["cfg"], "remind_repeat_minutes", rcfg.remind_repeat_minutes))
-                rcfg.standing_check_after_minutes = int(getattr(app_state["cfg"], "standing_check_after_minutes", rcfg.standing_check_after_minutes))
-                rcfg.standing_check_repeat_minutes = int(getattr(app_state["cfg"], "standing_check_repeat_minutes", rcfg.standing_check_repeat_minutes))
-                rcfg.snooze_minutes = int(getattr(app_state["cfg"], "snooze_minutes", rcfg.snooze_minutes))
-            except Exception:
-                pass
-            # Update logging level dynamically
-            try:
-                new_level_name = str(getattr(app_state["cfg"], "log_level", "INFO")).upper()
-                new_level = getattr(logging, new_level_name, logging.INFO)
-                root_logger = logging.getLogger()
-                root_logger.setLevel(new_level)
-                for h in list(root_logger.handlers):
-                    try:
-                        h.setLevel(new_level)
-                    except Exception:
-                        pass
-                log.info("Applied new log level: %s", new_level_name)
-            except Exception:
-                pass
-            log.info("Settings updated and applied")
-    settings_action.triggered.connect(open_settings)
 
-    # Pause/resume action
-    pause_action = QAction("Pause polling", menu)
-    def toggle_pause():
-        state["paused"] = not state["paused"]
-        if state["paused"]:
-            pause_action.setText("Resume polling")
-            log.info("Polling paused by user")
-        else:
-            pause_action.setText("Pause polling")
-            log.info("Polling resumed by user")
-    pause_action.triggered.connect(toggle_pause)
 
     # Snooze action
     snooze_action = QAction(f"Snooze {app_state['snooze_minutes']} min", menu)
@@ -244,13 +203,9 @@ def main() -> int:
     actions = menu.actions()
     if actions:
         menu.insertAction(actions[0], open_action)
-        menu.insertAction(actions[0], settings_action)
-        menu.insertAction(actions[0], pause_action)
         menu.insertAction(actions[0], snooze_action)
     else:
         menu.addAction(open_action)
-        menu.addAction(settings_action)
-        menu.addAction(pause_action)
         menu.addAction(snooze_action)
 
     # Log on lock/unlock
@@ -259,9 +214,9 @@ def main() -> int:
 
     # Define the polling function
     def poll_once() -> None:
-        # Skip polling when session is locked or user paused
+        # Skip polling when session is locked
         try:
-            if state["paused"] or not watcher.is_unlocked():
+            if not watcher.is_unlocked():
                 return
         except Exception:
             # if watcher fails, proceed
