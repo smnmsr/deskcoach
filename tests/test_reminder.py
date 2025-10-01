@@ -75,3 +75,36 @@ def test_locked_session_blocks_notifications(monkeypatch):
     eng._session.is_unlocked = lambda: False
     eng.on_new_measurement(int(datetime.now().timestamp()), 800)
     assert calls == []
+
+
+def test_lock_reset_creates_new_timewindow_even_if_later_short_lock(monkeypatch, tmp_path):
+    # Use a temp DB
+    from deskcoach.models import store as mstore
+
+    dbfile = tmp_path / "deskcoach.db"
+    monkeypatch.setattr(mstore, "db_path", lambda: dbfile)
+    mstore.init_db()
+
+    # Fixed reference time to avoid flakiness
+    base_now = int(datetime(2025, 1, 1, 12, 0, 0).timestamp())
+
+    # One old seated measurement before any locks (simulates no samples while locked)
+    mstore.save_measurement(base_now - 5000, 800)  # seated height below threshold
+
+    # A long lock/unlock pair earlier than a later short pair
+    # Long pair: 5 minutes lock (meets threshold)
+    mstore.save_session_event(base_now - 600, "LOCK")
+    mstore.save_session_event(base_now - 300, "UNLOCK")
+
+    # Short pair: 30 seconds lock (below threshold)
+    mstore.save_session_event(base_now - 60, "LOCK")
+    mstore.save_session_event(base_now - 30, "UNLOCK")
+
+    # Build engine with 5 minute reset threshold
+    cfg = SimpleNamespace(stand_threshold_mm=900, lock_reset_threshold_minutes=5)
+    sess = DummySession(unlocked=True)
+    eng = reminder.ReminderEngine(cfg, sess)
+
+    # Latest height is seated; seated streak should reset at the long UNLOCK (base_now - 300)
+    seated_min = eng._compute_seated_streak_minutes(base_now, latest_height=800)
+    assert seated_min == 5, f"Expected 5 minutes since last long unlock, got {seated_min}"

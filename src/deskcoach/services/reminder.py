@@ -97,28 +97,29 @@ class ReminderEngine(QObject):
         return sqlite3.connect(path)
 
     def _last_long_lock_unlock_ts(self, threshold_minutes: int) -> Optional[int]:
-        """Return the ts of the most recent UNLOCK that followed a LOCK lasting >= threshold.
+        """Return the ts of the most recent UNLOCK whose preceding LOCK lasted >= threshold.
 
-        If no such pair exists, return None.
+        This scans backwards over recent UNLOCK events until it finds one
+        that follows a long enough LOCK. If none exists, returns None.
         """
         threshold_sec = int(max(0, threshold_minutes)) * 60
         try:
             with self._db_conn() as conn:
-                row = conn.execute(
-                    "SELECT ts FROM session_events WHERE event='UNLOCK' ORDER BY ts DESC LIMIT 1"
-                ).fetchone()
-                if not row:
-                    return None
-                unlock_ts = int(row[0])
-                row2 = conn.execute(
-                    "SELECT ts FROM session_events WHERE event='LOCK' AND ts <= ? ORDER BY ts DESC LIMIT 1",
-                    (unlock_ts,),
-                ).fetchone()
-                if not row2:
-                    return None
-                lock_ts = int(row2[0])
-                if unlock_ts - lock_ts >= threshold_sec:
-                    return unlock_ts
+                # Iterate over recent UNLOCK events from newest to oldest
+                cur = conn.execute(
+                    "SELECT ts FROM session_events WHERE event='UNLOCK' ORDER BY ts DESC LIMIT 2000"
+                )
+                for (unlock_ts_val,) in cur:
+                    unlock_ts = int(unlock_ts_val)
+                    row2 = conn.execute(
+                        "SELECT ts FROM session_events WHERE event='LOCK' AND ts <= ? ORDER BY ts DESC LIMIT 1",
+                        (unlock_ts,),
+                    ).fetchone()
+                    if not row2:
+                        continue
+                    lock_ts = int(row2[0])
+                    if unlock_ts - lock_ts >= threshold_sec:
+                        return unlock_ts
         except Exception as e:  # pragma: no cover - defensive
             log.debug("DB session_events query failed: %s", e)
         return None
