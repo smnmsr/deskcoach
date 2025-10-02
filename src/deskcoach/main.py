@@ -242,6 +242,12 @@ def main() -> int:
             ts = int(time.time())
             store.save_measurement(ts, height_mm)
             log.info("Measurement saved: ts=%s height_mm=%s", ts, height_mm)
+            # Update daily aggregates for quick UI stats
+            try:
+                stand_thr = int(getattr(current_cfg, "stand_threshold_mm", 900))
+                store.update_daily_aggregates_now(stand_thr, ts)
+            except Exception:
+                pass
             # Feed reminder engine
             try:
                 reminder_engine.on_new_measurement(ts, height_mm)
