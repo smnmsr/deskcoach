@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QHBoxLayout,
     QPushButton,
+    QLabel,
 )
 
 
@@ -41,6 +42,16 @@ class SettingsDialog(QDialog):
         self.stand_threshold_mm = QSpinBox()
         self.stand_threshold_mm.setRange(300, 2000)
         self.stand_threshold_mm.setValue(int(getattr(appcfg, "stand_threshold_mm", 900)))
+
+        # Daily standing goal (hours)
+        self.stand_goal_hours = QDoubleSpinBox()
+        self.stand_goal_hours.setRange(0.0, 24.0)
+        self.stand_goal_hours.setDecimals(1)
+        try:
+            goal_mm = int(getattr(appcfg, "stand_goal_mm", 240))
+        except Exception:
+            goal_mm = 240
+        self.stand_goal_hours.setValue(max(0.0, float(goal_mm) / 60.0))
 
         self.remind_after_minutes = QSpinBox()
         self.remind_after_minutes.setRange(1, 600)
@@ -87,6 +98,7 @@ class SettingsDialog(QDialog):
         layout.addRow("Base URL", self.base_url)
         layout.addRow("Poll interval (minutes)", self.poll_minutes)
         layout.addRow("Stand threshold (mm)", self.stand_threshold_mm)
+        layout.addRow("Daily standing goal (hours)", self.stand_goal_hours)
         layout.addRow("Remind after (minutes)", self.remind_after_minutes)
         layout.addRow("Repeat every (minutes)", self.remind_repeat_minutes)
         layout.addRow("Standing check after (minutes)", self.standing_check_after_minutes)
@@ -124,6 +136,7 @@ class SettingsDialog(QDialog):
                 f"play_sound = {'true' if self.play_sound.isChecked() else 'false'}\n"
                 f"use_windows_toast = {'true' if self.use_windows_toast.isChecked() else 'false'}\n"
                 f"log_level = \"{getattr(self.log_level, 'currentText', lambda: 'INFO')()}\"\n"
+                f"stand_goal_mm = {int(round(self.stand_goal_hours.value() * 60))}\n"
             )
             cfg_path = Path(__file__).resolve().parents[3] / "config.toml"
             cfg_path.write_text(cfg_text, encoding="utf-8")

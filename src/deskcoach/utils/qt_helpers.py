@@ -39,6 +39,33 @@ def apply_modern_style(app: QApplication, theme: str = "auto") -> None:
                         padding: 6px 10px;
                     }
                     QMenu::item { border-radius: 6px; padding: 6px 12px; }
+
+                    /* DeskCoach dashboard styles */
+                    QLabel[dc="date"] {
+                        font-weight: 600;
+                        font-size: 16px;
+                    }
+                    QLabel[dc="muted"] {
+                        color: palette(mid);
+                    }
+                    QFrame[dc="card"] {
+                        border-radius: 10px;
+                        border: 1px solid palette(mid);
+                    }
+                    QLabel[dc="cardTitle"] { color: palette(mid); }
+                    QLabel[dc="value"] {
+                        font-size: 28px;
+                        font-weight: 700;
+                        padding: 2px 0 6px 0;
+                    }
+                    QLabel[dc="pill"] {
+                        padding: 3px 8px;
+                        border-radius: 10px;
+                        background: palette(button);
+                        color: palette(button-text);
+                    }
+                    QLabel[dc="pill"][class="good"] { background: #2e7d32; color: white; }
+                    QLabel[dc="pill"][class="bad"]  { background: #c62828; color: white; }
                     """
                 ),
             )
@@ -54,6 +81,33 @@ def apply_modern_style(app: QApplication, theme: str = "auto") -> None:
                         padding: 6px 10px;
                     }
                     QMenu::item { border-radius: 6px; padding: 6px 12px; }
+
+                    /* DeskCoach dashboard styles */
+                    QLabel[dc=\"date\"] {
+                        font-weight: 600;
+                        font-size: 16px;
+                    }
+                    QLabel[dc=\"muted\"] {
+                        color: palette(mid);
+                    }
+                    QFrame[dc=\"card\"] {
+                        border-radius: 10px;
+                        border: 1px solid palette(mid);
+                    }
+                    QLabel[dc=\"cardTitle\"] { color: palette(mid); }
+                    QLabel[dc=\"value\"] {
+                        font-size: 28px;
+                        font-weight: 700;
+                        padding: 2px 0 6px 0;
+                    }
+                    QLabel[dc=\"pill\"] {
+                        padding: 3px 8px;
+                        border-radius: 10px;
+                        background: palette(button);
+                        color: palette(button-text);
+                    }
+                    QLabel[dc=\"pill\"][class=\"good\"] { background: #2e7d32; color: white; }
+                    QLabel[dc=\"pill\"][class=\"bad\"]  { background: #c62828; color: white; }
                     """
                     try:
                         app.setStyleSheet(qss)

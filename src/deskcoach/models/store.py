@@ -303,7 +303,18 @@ def get_today_aggregates(stand_threshold_mm: int, now_ts: int | None = None) -> 
 
 
 def get_yesterday_aggregates_until_same_time(stand_threshold_mm: int, now_ts: int | None = None) -> tuple[int, int]:
-    """Return yesterday's (sitting_sec, standing_sec) up to the same clock time as now."""
+    """Return yesterday's (sitting_sec, standing_sec) up to the same clock time as now.
+
+    Notes
+    -----
+    This function computes the values on-the-fly from raw measurement samples
+    and session lock/unlock events for the window:
+      [yesterday 00:00:00 local, yesterday 00:00:00 + seconds_since_midnight(now)).
+    It intentionally does not read from the ``daily_aggregates`` table. By
+    design we only upsert today's aggregate row for quick UI reads; comparing
+    to yesterday uses direct computation so you may not see a ``daily_aggregates``
+    entry for yesterday. That is expected.
+    """
     now = int(now_ts if now_ts is not None else datetime.now().timestamp())
     # Determine seconds since midnight for now
     sec_since_midnight = _seconds_since_midnight(now)
@@ -312,3 +323,125 @@ def get_yesterday_aggregates_until_same_time(stand_threshold_mm: int, now_ts: in
     y_start_ts = today_start_ts - 24 * 3600
     y_end_ts = y_start_ts + sec_since_midnight
     return compute_day_aggregates(y_start_ts, y_end_ts, stand_threshold_mm)
+
+
+
+def _day_bounds_for_date_str(date_str: str) -> tuple[int, int]:
+    """Return (start_ts, end_ts) for the given local date string YYYY-MM-DD."""
+    try:
+        dt = datetime.strptime(date_str, "%Y-%m-%d")
+    except Exception:
+        # Fallback to today
+        start_ts, _ = _day_bounds_local(None)
+        return start_ts, start_ts + 24 * 3600
+    start = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    start_ts = int(start.timestamp())
+    return start_ts, start_ts + 24 * 3600
+
+
+def compute_full_day_aggregates_for_date(date_str: str, stand_threshold_mm: int) -> tuple[int, int]:
+    """Compute seated/standing seconds for the full local day given by date_str."""
+    start_ts, end_ts = _day_bounds_for_date_str(date_str)
+    return compute_day_aggregates(start_ts, end_ts, stand_threshold_mm)
+
+
+def get_aggregate_for_date(date_str: str) -> tuple[int, int] | None:
+    """Return (sitting_sec, standing_sec) for date if present in daily_aggregates."""
+    path = db_path()
+    try:
+        with sqlite3.connect(path) as conn:
+            row = conn.execute(
+                "SELECT sitting_sec, standing_sec FROM daily_aggregates WHERE date=?",
+                (date_str,),
+            ).fetchone()
+            if row:
+                return int(row[0]), int(row[1])
+    except Exception:
+        pass
+    return None
+
+
+essentially_no_data_sentinel = (-1, -1)  # internal use to mark no compute
+
+
+def ensure_daily_aggregate(date_str: str, stand_threshold_mm: int) -> tuple[int, int]:
+    """Ensure daily_aggregates has a row for date_str; compute and upsert if missing.
+    Returns (sitting_sec, standing_sec).
+    """
+    existing = get_aggregate_for_date(date_str)
+    if existing is not None:
+        return existing
+    # Compute once and persist
+    sitting, standing = compute_full_day_aggregates_for_date(date_str, stand_threshold_mm)
+    try:
+        now_ts = int(datetime.now().timestamp())
+        upsert_daily_aggregate(date_str, sitting, standing, now_ts)
+    except Exception:
+        pass
+    return sitting, standing
+
+
+def get_yesterday_full_aggregate(stand_threshold_mm: int, now_ts: int | None = None) -> tuple[int, int]:
+    """Return full-day (sitting_sec, standing_sec) for yesterday, ensuring it's cached."""
+    now = int(now_ts if now_ts is not None else datetime.now().timestamp())
+    today_start_ts, today_str = _day_bounds_local(now)
+    # Compute yesterday's date string
+    y_dt = datetime.fromtimestamp(today_start_ts) - timedelta(days=1)
+    y_str = y_dt.strftime("%Y-%m-%d")
+    return ensure_daily_aggregate(y_str, stand_threshold_mm)
+
+
+def backfill_past_aggregates(stand_threshold_mm: int, upto_now_ts: int | None = None) -> None:
+    """Backfill daily_aggregates for all full past days based on measurements.
+
+    - Finds the first measurement timestamp and iterates through each local date
+      up to yesterday, computing and inserting missing aggregates.
+    - Skips days that already have an entry.
+    """
+    now = int(upto_now_ts if upto_now_ts is not None else datetime.now().timestamp())
+    path = db_path()
+    first_ts: int | None = None
+    try:
+        with sqlite3.connect(path) as conn:
+            row = conn.execute("SELECT MIN(ts) FROM measurements").fetchone()
+            if row and row[0] is not None:
+                first_ts = int(row[0])
+    except Exception:
+        first_ts = None
+    if first_ts is None:
+        return  # nothing to backfill
+    # Start from local date of first_ts
+    start_of_first, _ = _day_bounds_local(first_ts)
+    start_dt = datetime.fromtimestamp(start_of_first)
+    today_start_ts, _ = _day_bounds_local(now)
+    # Iterate day by day until yesterday
+    cur_dt = start_dt
+    yesterday_dt = datetime.fromtimestamp(today_start_ts) - timedelta(days=1)
+    try:
+        with sqlite3.connect(path) as conn:
+            while cur_dt <= yesterday_dt:
+                ds = cur_dt.strftime("%Y-%m-%d")
+                # Skip if exists
+                row = conn.execute("SELECT 1 FROM daily_aggregates WHERE date=?", (ds,)).fetchone()
+                if not row:
+                    s, t = compute_full_day_aggregates_for_date(ds, stand_threshold_mm)
+                    upsert_daily_aggregate(ds, s, t, int(now))
+                cur_dt = cur_dt + timedelta(days=1)
+    except Exception:
+        # Best-effort; ignore failures to avoid blocking UI
+        return
+
+
+def clear_daily_aggregates() -> None:
+    """Delete all rows from daily_aggregates.
+
+    This is used when the user requests a full recomputation of aggregates.
+    """
+    path = db_path()
+    try:
+        with sqlite3.connect(path) as conn:
+            conn.execute("DELETE FROM daily_aggregates")
+            conn.commit()
+    except Exception:
+        # Non-fatal; caller may attempt to backfill anyway
+        return
