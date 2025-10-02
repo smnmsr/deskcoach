@@ -80,6 +80,11 @@ def _write_default_to(path: Path) -> None:
     log.info("Created default config at %s", path)
 
 
+def get_user_config_path() -> Path:
+    """Return the path to the user-specific config.toml (creates data dir if missing)."""
+    return _data_dir() / CONFIG_FILENAME
+
+
 def load_config(path: Optional[Path | str] = None) -> SimpleNamespace:
     """Load configuration into a SimpleNamespace.
 

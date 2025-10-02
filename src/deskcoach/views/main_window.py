@@ -1,8 +1,21 @@
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QPushButton, QLabel, QHBoxLayout, QProgressBar, QFrame, QProgressDialog, QMessageBox
+from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QPushButton, QHBoxLayout, QMessageBox
 from PyQt6.QtCore import QTimer, Qt
 from pathlib import Path
+
+# Optional widgets (not present in minimal test stubs)
+try:  # pragma: no cover - exercised by import tests
+    from PyQt6.QtWidgets import QProgressBar as _QProgressBar, QFrame as _QFrame, QProgressDialog as _QProgressDialog, QLabel as _QLabel  # type: ignore
+    QProgressBar = _QProgressBar  # type: ignore
+    QFrame = _QFrame  # type: ignore
+    QProgressDialog = _QProgressDialog  # type: ignore
+    QLabel = _QLabel  # type: ignore
+except Exception:  # pragma: no cover
+    QProgressBar = QWidget  # type: ignore
+    QFrame = QWidget  # type: ignore
+    QProgressDialog = QWidget  # type: ignore
+    QLabel = QWidget  # type: ignore
 
 from .settings_dialog import SettingsDialog
 from ..models import store
