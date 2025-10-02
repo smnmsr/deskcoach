@@ -190,7 +190,22 @@ def main() -> int:
         main_window.activateWindow()
     open_action.triggered.connect(open_main_window)
 
-
+    # Open on tray single click or double-click
+    try:
+        def _on_tray_activated(reason):
+            try:
+                # Respond to left single click (Trigger) and double-click
+                if reason in (
+                    QSystemTrayIcon.ActivationReason.Trigger,
+                    QSystemTrayIcon.ActivationReason.DoubleClick,
+                ):
+                    open_main_window()
+            except Exception:
+                pass
+        tray.activated.connect(_on_tray_activated)
+    except Exception:
+        # If tray activation connection fails, ignore
+        pass
 
     # Snooze action
     snooze_action = QAction(f"Snooze {app_state['snooze_minutes']} min", menu)
