@@ -188,15 +188,12 @@ def compute_day_aggregates(start_ts: int, end_ts: int, stand_threshold_mm: int) 
     """Compute seated/standing seconds between [start_ts, end_ts] using samples,
     excluding time while the session is locked.
 
-    Each interval between consecutive samples is attributed to the state of the
-    earlier sample; the trailing interval to end_ts uses the last sample's state.
-    Locked sub-intervals are removed from attribution.
+    Delegates time attribution to utils.time_stats.accumulate_sit_stand_seconds
+    to keep separation of concerns (DB I/O vs. time math).
     """
     if end_ts <= start_ts:
         return 0, 0
     path = db_path()
-    seated = 0
-    standing = 0
     try:
         with sqlite3.connect(path) as conn:
             cur = conn.execute(
@@ -212,43 +209,18 @@ def compute_day_aggregates(start_ts: int, end_ts: int, stand_threshold_mm: int) 
     # Build lock intervals
     lock_intervals = _locked_intervals(start_ts, end_ts)
 
-    def _overlap_len(a0: int, a1: int, b0: int, b1: int) -> int:
-        return max(0, min(a1, b1) - max(a0, b0))
+    # Delegate to utility function
+    try:
+        from ..utils.time_stats import accumulate_sit_stand_seconds
+    except Exception:  # pragma: no cover - fallback for absolute import usage
+        from deskcoach.utils.time_stats import accumulate_sit_stand_seconds  # type: ignore
 
-    def _subtract_locked(seg_start: int, seg_end: int) -> int:
-        length = max(0, seg_end - seg_start)
-        if length == 0 or not lock_intervals:
-            return length
-        cut = 0
-        for l0, l1 in lock_intervals:
-            cut += _overlap_len(seg_start, seg_end, l0, l1)
-            if cut >= length:
-                return 0
-        return max(0, length - cut)
-
-    thr = int(stand_threshold_mm)
-    # Attribute consecutive sample intervals
-    for i in range(len(rows) - 1):
-        t0, h0 = rows[i]
-        t1, _ = rows[i + 1]
-        if t1 <= t0:
-            continue
-        effective = _subtract_locked(t0, t1)
-        if effective <= 0:
-            continue
-        if h0 >= thr:
-            standing += effective
-        else:
-            seated += effective
-    # Tail from last sample to end_ts
-    last_ts, last_h = rows[-1]
-    if end_ts > last_ts:
-        effective = _subtract_locked(last_ts, end_ts)
-        if effective > 0:
-            if last_h >= thr:
-                standing += effective
-            else:
-                seated += effective
+    seated, standing = accumulate_sit_stand_seconds(
+        measurements=rows,
+        lock_intervals=lock_intervals,
+        stand_threshold_mm=int(stand_threshold_mm),
+        end_ts=int(end_ts),
+    )
     return seated, standing
 
 
