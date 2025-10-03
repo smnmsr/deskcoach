@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from typing import Optional
-from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QDialog,
@@ -10,7 +9,6 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QDoubleSpinBox,
     QSpinBox,
-    QCheckBox,
     QMessageBox,
     QHBoxLayout,
     QPushButton,
@@ -149,22 +147,9 @@ class SettingsDialog(QDialog):
         # Notifications section
         notif_box = QGroupBox("Notifications")
         notif_form = QFormLayout(notif_box)
-        notif_help = QLabel(
-            "Choose how DeskCoach notifies you. On Windows, Toast notifications are used if available. "
-            "Play sound only applies to Windows Toasts. If Toasts are unavailable, the app falls back to the tray message without sound."
-        )
+        notif_help = QLabel("DeskCoach uses the system tray to show notifications. On Windows, they appear as native notifications.")
         notif_help.setWordWrap(True)
         notif_form.addRow(notif_help)
-
-        self.play_sound = QCheckBox("Play sound in notifications")
-        self.play_sound.setChecked(bool(getattr(appcfg, "play_sound", True)))
-        self.play_sound.setToolTip("Adds the system notification sound to Windows Toast notifications.")
-
-        self.use_windows_toast = QCheckBox("Use Windows Toast notifications")
-        self.use_windows_toast.setChecked(bool(getattr(appcfg, "use_windows_toast", True)))
-        self.use_windows_toast.setToolTip(
-            "When enabled and supported, use Windows 10/11 Toasts. Requires the WinRT runtime (python 'winrt' package)."
-        )
 
         # Log level selector (lazy import to allow tests without full PyQt6 widgets)
         try:
@@ -178,8 +163,6 @@ class SettingsDialog(QDialog):
             # Fallback placeholder when QComboBox is unavailable in minimal test stubs
             self.log_level = QWidget(self)
 
-        notif_form.addRow(self.play_sound)
-        notif_form.addRow(self.use_windows_toast)
         notif_form.addRow("Log level", self.log_level)
 
         # Test notification button to preview current settings
@@ -229,8 +212,6 @@ class SettingsDialog(QDialog):
             standing_check_repeat_minutes = int(self.standing_check_repeat_minutes.value())
             snooze_minutes = int(self.snooze_minutes.value())
             lock_reset_threshold_minutes = int(self.lock_reset_threshold_minutes.value())
-            play_sound = self.play_sound.isChecked()
-            use_windows_toast = self.use_windows_toast.isChecked()
             # When QComboBox fallback is used (tests), currentText may be missing
             log_level = str(getattr(self.log_level, 'currentText', lambda: 'INFO')()).upper()
             stand_goal_mm = int(round(self.stand_goal_hours.value() * 60))
@@ -246,8 +227,6 @@ class SettingsDialog(QDialog):
                 f"standing_check_repeat_minutes = {standing_check_repeat_minutes}\n"
                 f"snooze_minutes = {snooze_minutes}\n"
                 f"lock_reset_threshold_minutes = {lock_reset_threshold_minutes}\n"
-                f"play_sound = {'true' if play_sound else 'false'}\n"
-                f"use_windows_toast = {'true' if use_windows_toast else 'false'}\n"
                 f"log_level = \"{log_level}\"\n"
                 f"stand_goal_mm = {stand_goal_mm}\n"
             )
@@ -268,8 +247,6 @@ class SettingsDialog(QDialog):
                     appcfg.standing_check_repeat_minutes = standing_check_repeat_minutes
                     appcfg.snooze_minutes = snooze_minutes
                     appcfg.lock_reset_threshold_minutes = lock_reset_threshold_minutes
-                    appcfg.play_sound = play_sound
-                    appcfg.use_windows_toast = use_windows_toast
                     appcfg.log_level = log_level
                     # Note: stand_goal_mm is currently not part of SimpleNamespace in load_config
             except Exception:

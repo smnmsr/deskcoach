@@ -7,6 +7,4 @@ remind_repeat_minutes = 5
 standing_check_after_minutes = 5
 standing_check_repeat_minutes = 2
 snooze_minutes = 30
-play_sound = true
-use_windows_toast = true
 log_level = "WARNING"

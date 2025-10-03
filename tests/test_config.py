@@ -29,8 +29,6 @@ def test_load_config_from_custom_path(tmp_path: Path):
         standing_check_after_minutes = 12
         standing_check_repeat_minutes = 6
         snooze_minutes = 20
-        play_sound = false
-        use_windows_toast = false
         """,
     )
     ns = load_config(cfg_path).app
@@ -40,8 +38,6 @@ def test_load_config_from_custom_path(tmp_path: Path):
     assert ns.remind_after_minutes == 40
     assert ns.remind_repeat_minutes == 7
     assert ns.snooze_minutes == 20
-    assert ns.play_sound is False
-    assert ns.use_windows_toast is False
     assert ns.standing_check_after_minutes == 12
     assert ns.standing_check_repeat_minutes == 6
 
@@ -83,8 +79,6 @@ def test_load_config_uses_existing_in_data_dir(tmp_path: Path, monkeypatch: pyte
         base_url = "http://from-data-dir"
         poll_minutes = 3.5
         snooze_minutes = 15
-        play_sound = false
-        use_windows_toast = false
         """
     )
     (data_dir / "config.toml").write_text(cfg_text, encoding="utf-8")
@@ -99,5 +93,3 @@ def test_load_config_uses_existing_in_data_dir(tmp_path: Path, monkeypatch: pyte
     assert ns.base_url == "http://from-data-dir"
     assert ns.poll_minutes == 3.5
     assert ns.snooze_minutes == 15
-    assert ns.play_sound is False
-    assert ns.use_windows_toast is False
