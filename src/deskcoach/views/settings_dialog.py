@@ -151,26 +151,25 @@ class SettingsDialog(QDialog):
         notif_help.setWordWrap(True)
         notif_form.addRow(notif_help)
 
-        # Log level selector (lazy import to allow tests without full PyQt6 widgets)
+        # Test notification button to preview current settings and check system support
         try:
-            from PyQt6.QtWidgets import QComboBox  # type: ignore
-            self.log_level = QComboBox()
-            self.log_level.addItems(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"])
-            current_level = str(getattr(appcfg, "log_level", "INFO")).upper()
-            idx = max(0, self.log_level.findText(current_level))
-            self.log_level.setCurrentIndex(idx)
-        except Exception:
-            # Fallback placeholder when QComboBox is unavailable in minimal test stubs
-            self.log_level = QWidget(self)
-
-        notif_form.addRow("Log level", self.log_level)
-
-        # Test notification button to preview current settings
-        try:
-            from PyQt6.QtWidgets import QPushButton as _QPushButton  # type: ignore
+            from PyQt6.QtWidgets import QPushButton as _QPushButton, QSystemTrayIcon as _QSystemTrayIcon  # type: ignore
             test_btn = _QPushButton("Test notification")
             def _do_test():
                 try:
+                    # Check whether the platform supports tray messages
+                    supports = False
+                    try:
+                        supports = bool(_QSystemTrayIcon.supportsMessages())
+                    except Exception:
+                        supports = False
+
+                    # Provide user feedback
+                    if supports:
+                        QMessageBox.information(self, "Notifications supported", "Your system supports tray notifications. A test notification will be sent now.")
+                    else:
+                        QMessageBox.warning(self, "Notifications not supported", "Your system does not report support for tray notifications. DeskCoach may not be able to show reminder popups on this system. We'll still try using a fallback.")
+
                     # Lazy import to avoid hard dependency during tests
                     try:
                         from ..services import notifier as _notifier  # type: ignore
@@ -186,6 +185,28 @@ class SettingsDialog(QDialog):
             pass
 
         main.addWidget(notif_box)
+
+        # Logging section (separate from notifications)
+        log_box = QGroupBox("Logging")
+        log_form = QFormLayout(log_box)
+        log_help = QLabel("Configure application logging verbosity. This does not affect notifications.")
+        log_help.setWordWrap(True)
+        log_form.addRow(log_help)
+
+        # Log level selector (lazy import to allow tests without full PyQt6 widgets)
+        try:
+            from PyQt6.QtWidgets import QComboBox  # type: ignore
+            self.log_level = QComboBox()
+            self.log_level.addItems(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"])
+            current_level = str(getattr(appcfg, "log_level", "INFO")).upper()
+            idx = max(0, self.log_level.findText(current_level))
+            self.log_level.setCurrentIndex(idx)
+        except Exception:
+            # Fallback placeholder when QComboBox is unavailable in minimal test stubs
+            self.log_level = QWidget(self)
+
+        log_form.addRow("Log level", self.log_level)
+        main.addWidget(log_box)
 
         # Buttons row
         btn_row = QHBoxLayout()
