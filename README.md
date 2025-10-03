@@ -2,26 +2,65 @@
 
 A minimal PyQt6 system tray app for Windows that reminds you to take healthy breaks.
 
+- Lightweight and privacy‑friendly: all data stays local
+- Native Windows Toast notifications with optional sound
+- Quick access from the system tray (pause, snooze, settings)
+
+## Screenshots
+
+A quick visual tour of DeskCoach.
+
+### Tray icon
+<p align="center">
+  <img src="src/deskcoach/resources/images/tray_icon.png" alt="Windows taskbar overflow showing the DeskCoach tray icon highlighted" width="420" />
+</p>
+
+### Main window
+<p align="center">
+  <img src="src/deskcoach/resources/images/main_window.png" alt="DeskCoach main window with today’s standing and sitting durations and a progress bar toward a 4 hour standing goal" width="340" />
+</p>
+
+### Settings
+<p align="center">
+  <img src="src/deskcoach/resources/images/settings_window.png" alt="DeskCoach Settings dialog with sections for Connectivity, Goals, Reminders, Standing checks, Notifications, and Logging" width="720" />
+</p>
+
+### Reminder toast
+<p align="center">
+  <img src="src/deskcoach/resources/images/stand_up_notification.png" alt="Windows toast notification from DeskCoach prompting to stand up after prolonged sitting" width="520" />
+</p>
+
+### Posture check
+<p align="center">
+  <img src="src/deskcoach/resources/images/posture_check_notification.png" alt="Windows toast notification from DeskCoach suggesting a posture check while standing" width="520" />
+</p>
+
+All images include descriptive alt text for screen readers.
+
 ## Quick start
 
 - Requirements: Windows 10/11, Python 3.10+
-- Install deps:
-  
-  PowerShell
-  
-      python -m venv .venv
-      .\.venv\Scripts\Activate.ps1
-      python -m pip install -r requirements.txt
+- Install dependencies (PowerShell):
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+```
 
 - Run the app:
-  
-      python -m deskcoach.main
-  
-  Or, after installing as a package (build or editable install), use the console script:
-  
-      deskcoach
 
-The app places an icon in the system tray. Right-click for the menu (Open, Settings, Pause/Resume, Snooze, Exit).
+```powershell
+python -m deskcoach.main
+```
+
+Or, after installing as a package (build or editable install), use the console script:
+
+```powershell
+deskcoach
+```
+
+The app places an icon in the system tray. Right‑click for the menu (Open, Settings, Pause/Resume, Snooze, Exit).
 
 ## Project layout
 
@@ -35,7 +74,9 @@ The app places an icon in the system tray. Right-click for the menu (Open, Setti
 
 Run the test suite from the project root:
 
-    pytest -q
+```powershell
+pytest -q
+```
 
 ## Notifications settings
 
@@ -48,6 +89,8 @@ Tip: Open Settings and click "Test notification" to preview how notifications lo
 
 You can create a Windows executable with PyInstaller. A starter spec file is provided:
 
-    pyinstaller main.spec
+```powershell
+pyinstaller main.spec
+```
 
 This will produce dist\DeskCoach.exe.
