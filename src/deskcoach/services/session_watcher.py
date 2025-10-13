@@ -207,7 +207,7 @@ class SessionWatcher(QObject):
     session_locked = Signal()
     session_unlocked = Signal()
 
-    def __init__(self) -> None:
+    def __init__(self, emit_initial_event: bool = False) -> None:
         super().__init__()
         # Start pessimistically as locked; probes and first WTS event will correct if needed.
         self._unlocked: bool = False
@@ -221,11 +221,16 @@ class SessionWatcher(QObject):
         if not sys.platform.startswith("win"):
             self._unlocked = True
             log.info("SessionWatcher active: non-Windows platform, treating as always unlocked.")
+            # Emit synthetic initial event if requested
+            if emit_initial_event:
+                self._emit_initial_event()
             return
         if wintypes is None or wtsapi32 is None:
             self._unlocked = True
             self._widget = None
             log.info("SessionWatcher: WTS/ctypes unavailable; treating as always unlocked.")
+            if emit_initial_event:
+                self._emit_initial_event()
             return
 
         app = QCoreApplication.instance()
@@ -256,6 +261,10 @@ class SessionWatcher(QObject):
                 log.info("Initial state via input desktop: unlocked=%s", unlocked)
             else:
                 log.info("Initial state probe unavailable; defaulting to %s", self._unlocked)
+
+        # Optionally emit a synthetic initial event so downstream logic "sees" the current state
+        if emit_initial_event:
+            self._emit_initial_event()
 
     def _register_hidden_window(self) -> None:
         if not sys.platform.startswith("win"):
@@ -369,6 +378,34 @@ class SessionWatcher(QObject):
 
     def is_unlocked(self) -> bool:
         return self._unlocked
+
+    def _emit_initial_event(self, persist: bool = False) -> None:
+        """Emit a synthetic initial event corresponding to the current state.
+
+        This bypasses duplicate-state guards to ensure downstream subscribers are
+        notified even if the real Windows event occurred before app startup.
+        Optionally persists the event via the store if available.
+        """
+        try:
+            ts = int(datetime.now().timestamp())
+            if self._unlocked:
+                try:
+                    if persist and store is not None:
+                        store.save_session_event(ts, "UNLOCK")  # type: ignore[attr-defined]
+                except Exception:
+                    pass
+                log.info("Emitting initial UNLOCK state event")
+                self.session_unlocked.emit()
+            else:
+                try:
+                    if persist and store is not None:
+                        store.save_session_event(ts, "LOCK")  # type: ignore[attr-defined]
+                except Exception:
+                    pass
+                log.info("Emitting initial LOCK state event")
+                self.session_locked.emit()
+        except Exception as e:  # pragma: no cover
+            log.debug("Failed to emit initial event: %s", e)
 
     # Exposed for testing: handle a WTS event with given reason/session and known active console
     def _handle_wts_event(self, reason: int, session_id: int, active_console: Optional[int]) -> None:

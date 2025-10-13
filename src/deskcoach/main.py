@@ -168,7 +168,7 @@ def main() -> int:
         pass
 
     # Session watcher and reminder engine
-    watcher = SessionWatcher()
+    watcher = SessionWatcher(emit_initial_event=True)
     reminder_engine = ReminderEngine(cfg, watcher)
 
 
