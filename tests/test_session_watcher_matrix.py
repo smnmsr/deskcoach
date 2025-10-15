@@ -70,11 +70,34 @@ def make_fake_pyqt(monkeypatch):
     def pyqtSignal(*_args, **_kwargs):
         return FakeSignal()
 
+    class QTimer:
+        def __init__(self, *_args, **_kwargs):
+            self.interval = 0
+            self._active = False
+            self.timeout = FakeSignal()
+
+        def setInterval(self, interval):
+            self.interval = interval
+
+        def start(self):
+            self._active = True
+
+        def stop(self):
+            self._active = False
+
+        def isActive(self):
+            return self._active
+
+        @staticmethod
+        def singleShot(_interval, callback):
+            callback()
+
     qtcore.QObject = QObject
     qtcore.QAbstractNativeEventFilter = QAbstractNativeEventFilter
     qtcore.QCoreApplication = DummyApp
     qtcore.Qt = Qt
     qtcore.pyqtSignal = pyqtSignal
+    qtcore.QTimer = QTimer
 
     qtwidgets = types.ModuleType("PyQt6.QtWidgets")
 
@@ -181,12 +204,12 @@ def test_startup_session_switch_no_console_then_event(sw, monkeypatch):
     w = make_watcher(monkeypatch, platform="win32", wts_available=True, wts_probe=None, desktop_probe=None)
     w.session_locked.connect(catcher.on_locked)
     w.session_unlocked.connect(catcher.on_unlocked)
-    # No active console -> ignore unless CONNECT/DISCONNECT
+    # Unlock event should still toggle even when active console id is unknown
     w._handle_wts_event(sw.WTS_SESSION_UNLOCK, session_id=10, active_console=None)
-    assert catcher.events == []
-    # Now receive CONNECT -> unlock
-    w._handle_wts_event(sw.WTS_CONSOLE_CONNECT, session_id=10, active_console=None)
     assert w.is_unlocked() is True
+    assert catcher.events == ["unlocked"]
+    # Subsequent CONNECT is a no-op since we're already unlocked
+    w._handle_wts_event(sw.WTS_CONSOLE_CONNECT, session_id=10, active_console=None)
     assert catcher.events == ["unlocked"]
 
 
@@ -254,6 +277,18 @@ def test_ignore_non_console_session(sw, monkeypatch):
     w._handle_wts_event(sw.WTS_SESSION_LOCK, session_id=99, active_console=active)
     assert catcher.events == []
     assert w.is_unlocked() is True
+
+
+def test_lock_unlock_unknown_active_console(sw, monkeypatch):
+    catcher = SignalCatcher()
+    w = make_watcher(monkeypatch, platform="win32", wts_available=True, wts_probe=True)
+    w.session_locked.connect(catcher.on_locked)
+    w.session_unlocked.connect(catcher.on_unlocked)
+    w._handle_wts_event(sw.WTS_SESSION_LOCK, session_id=42, active_console=None)
+    assert w.is_unlocked() is False
+    w._handle_wts_event(sw.WTS_SESSION_UNLOCK, session_id=42, active_console=None)
+    assert w.is_unlocked() is True
+    assert catcher.events == ["locked", "unlocked"]
 
 
 def test_race_disconnect_connect(sw, monkeypatch):
@@ -396,6 +431,41 @@ def test_signals_are_synchronous_with_state(sw, monkeypatch):
     w._handle_wts_event(sw.WTS_SESSION_LOCK, session_id=active, active_console=active)
     w._handle_wts_event(sw.WTS_SESSION_UNLOCK, session_id=active, active_console=active)
     assert observed == [False, True]
+
+
+def test_polling_resynchronizes_state(sw, monkeypatch):
+    catcher = SignalCatcher()
+    w = make_watcher(monkeypatch, platform="win32", wts_available=True, wts_probe=True)
+    w.session_locked.connect(catcher.on_locked)
+    w.session_unlocked.connect(catcher.on_unlocked)
+
+    monkeypatch.setattr(sw.SessionWatcher, "_probe_initial_state_wts", lambda self: False)
+    w._poll_session_state()
+    assert w.is_unlocked() is False
+
+    monkeypatch.setattr(sw.SessionWatcher, "_probe_initial_state_wts", lambda self: True)
+    w._poll_session_state()
+    assert w.is_unlocked() is True
+
+    assert catcher.events == ["locked", "unlocked"]
+
+
+def test_polling_falls_back_to_input_desktop(sw, monkeypatch):
+    catcher = SignalCatcher()
+    w = make_watcher(monkeypatch, platform="win32", wts_available=True, wts_probe=True)
+    w.session_locked.connect(catcher.on_locked)
+    w.session_unlocked.connect(catcher.on_unlocked)
+
+    w._handle_wts_event(sw.WTS_SESSION_LOCK, session_id=1, active_console=1)
+    assert w.is_unlocked() is False
+
+    monkeypatch.setattr(sw.SessionWatcher, "_probe_initial_state_wts", lambda self: None)
+    monkeypatch.setattr(sw, "_probe_unlocked_via_input_desktop", lambda: True)
+
+    w._poll_session_state()
+
+    assert w.is_unlocked() is True
+    assert catcher.events == ["locked", "unlocked"]
 
 
 # --- Cleanup / lifecycle ---
