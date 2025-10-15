@@ -215,6 +215,7 @@ class SessionWatcher(QObject):
         self._widget: Optional[QWidget] = None
         self._unregistered: bool = False
         self._wts_registered: bool = False
+        self._poll_timer = None
         self._filter = _NativeFilter(self)
 
         # If not on Windows or WTS/ctypes not available, treat as always unlocked and return early.
@@ -265,6 +266,18 @@ class SessionWatcher(QObject):
         # Optionally emit a synthetic initial event so downstream logic "sees" the current state
         if emit_initial_event:
             self._emit_initial_event()
+
+        # Start a lightweight polling timer to realign if events are missed
+        if sys.platform.startswith("win") and wintypes is not None and wtsapi32 is not None:
+            try:
+                from PyQt6.QtCore import QTimer
+
+                self._poll_timer = QTimer(self)
+                self._poll_timer.setInterval(60_000)
+                self._poll_timer.timeout.connect(self._poll_session_state)  # type: ignore[attr-defined]
+                self._poll_timer.start()
+            except Exception:
+                self._poll_timer = None
 
     def _register_hidden_window(self) -> None:
         if not sys.platform.startswith("win"):
@@ -411,6 +424,18 @@ class SessionWatcher(QObject):
     def _handle_wts_event(self, reason: int, session_id: int, active_console: Optional[int]) -> None:
         # Accept CONNECT/DISCONNECT only when active_console is unknown (switch in progress)
         if active_console is None:
+            if reason == WTS_SESSION_LOCK:
+                log.info(
+                    "WTS lock event received without active console id; assuming local console locked.",
+                )
+                self._on_locked()
+                return
+            if reason == WTS_SESSION_UNLOCK:
+                log.info(
+                    "WTS unlock event received without active console id; assuming local console unlocked.",
+                )
+                self._on_unlocked()
+                return
             if reason == WTS_CONSOLE_DISCONNECT:
                 self._on_locked()
                 return
@@ -438,6 +463,26 @@ class SessionWatcher(QObject):
             self._on_unlocked()
 
     # Internal handlers
+    def _poll_session_state(self) -> None:
+        """Periodic sanity check in case lock/unlock events are missed."""
+        try:
+            state = self._probe_initial_state_wts()
+        except Exception:
+            state = None
+        if state is None:
+            try:
+                state = _probe_unlocked_via_input_desktop()
+            except Exception:
+                state = None
+        if state is None:
+            return
+        if state and not self._unlocked:
+            log.info("Polling detected unlocked session; resynchronizing state.")
+            self._on_unlocked()
+        elif not state and self._unlocked:
+            log.info("Polling detected locked session; resynchronizing state.")
+            self._on_locked()
+
     def _on_locked(self) -> None:
         if not self._unlocked:
             return
@@ -473,6 +518,12 @@ class SessionWatcher(QObject):
             if getattr(self, "_unregistered", False):
                 return
             self._unregistered = True
+            try:
+                poll_timer = getattr(self, "_poll_timer", None)
+                if poll_timer is not None and getattr(poll_timer, "isActive", lambda: False)():
+                    poll_timer.stop()
+            except Exception:
+                pass
             if sys.platform.startswith("win") and getattr(self, "_widget", None) is not None \
                and wintypes is not None and wtsapi32 is not None and getattr(self, "_wts_registered", False):
                 self._wts_registered = False  # flip first
