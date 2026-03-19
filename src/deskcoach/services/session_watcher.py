@@ -265,7 +265,7 @@ class SessionWatcher(QObject):
 
         # Optionally emit a synthetic initial event so downstream logic "sees" the current state
         if emit_initial_event:
-            self._emit_initial_event()
+            self._emit_initial_event(persist=True)
 
         # Start a lightweight polling timer to realign if events are missed
         if sys.platform.startswith("win") and wintypes is not None and wtsapi32 is not None:
@@ -422,7 +422,28 @@ class SessionWatcher(QObject):
 
     # Exposed for testing: handle a WTS event with given reason/session and known active console
     def _handle_wts_event(self, reason: int, session_id: int, active_console: Optional[int]) -> None:
-        # Accept CONNECT/DISCONNECT only when active_console is unknown (switch in progress)
+        log.debug(
+            "Handling WTS event: reason=%s session_id=%s active_console=%s unlocked_before=%s",
+            reason,
+            session_id,
+            active_console,
+            self._unlocked,
+        )
+
+        def _probe_state() -> Optional[bool]:
+            try:
+                state = self._probe_initial_state_wts()
+            except Exception:
+                state = None
+            if state is None:
+                try:
+                    state = _probe_unlocked_via_input_desktop()
+                except Exception:
+                    state = None
+            return state
+
+        # Accept explicit LOCK/UNLOCK even when active_console is unknown.
+        # For CONNECT/DISCONNECT with unknown console id, prefer a probe to avoid false flips.
         if active_console is None:
             if reason == WTS_SESSION_LOCK:
                 log.info(
@@ -436,15 +457,42 @@ class SessionWatcher(QObject):
                 )
                 self._on_unlocked()
                 return
+            if reason == WTS_CONSOLE_CONNECT:
+                state = _probe_state()
+                if state is True:
+                    self._on_unlocked()
+                elif state is False:
+                    self._on_locked()
+                else:
+                    log.info("Ignoring CONNECT event with unknown active console: state probe unavailable")
+                return
             if reason == WTS_CONSOLE_DISCONNECT:
+                # Be conservative on disconnect during session switches.
                 self._on_locked()
                 return
-            if reason == WTS_CONSOLE_CONNECT:
-                self._on_unlocked()
-                return
             return
-        # With a known active_console, ignore events not for that session (including CONNECT/DISCONNECT)
+
+        # With a known active_console, ignore CONNECT/DISCONNECT for non-console sessions.
+        # For explicit LOCK/UNLOCK mismatch, use a probe before deciding to ignore.
         if session_id != active_console:
+            if reason in (WTS_SESSION_LOCK, WTS_SESSION_UNLOCK):
+                state = _probe_state()
+                if reason == WTS_SESSION_LOCK and state is False:
+                    log.info(
+                        "Applying mismatched LOCK event after probe confirmed locked: session=%s active_console=%s",
+                        session_id,
+                        active_console,
+                    )
+                    self._on_locked()
+                    return
+                if reason == WTS_SESSION_UNLOCK and state is True:
+                    log.info(
+                        "Applying mismatched UNLOCK event after probe confirmed unlocked: session=%s active_console=%s",
+                        session_id,
+                        active_console,
+                    )
+                    self._on_unlocked()
+                    return
             log.info(
                 "Ignoring WTS change for non-console session: reason=%s, session=%s, active_console=%s",
                 reason,

@@ -570,6 +570,38 @@ def test_ignore_connect_disconnect_when_active_console_known_and_differs(sw, mon
     assert catcher.events == []
 
 
+def test_connect_unknown_console_does_not_force_unlock_without_probe(sw, monkeypatch):
+    catcher = SignalCatcher()
+    w = make_watcher(monkeypatch, platform="win32", wts_available=True, wts_probe=False)
+    w.session_locked.connect(catcher.on_locked)
+    w.session_unlocked.connect(catcher.on_unlocked)
+    assert w.is_unlocked() is False
+
+    monkeypatch.setattr(sw.SessionWatcher, "_probe_initial_state_wts", lambda self: None)
+    monkeypatch.setattr(sw, "_probe_unlocked_via_input_desktop", lambda: None)
+
+    w._handle_wts_event(sw.WTS_CONSOLE_CONNECT, session_id=7, active_console=None)
+
+    assert w.is_unlocked() is False
+    assert catcher.events == []
+
+
+def test_lock_unlock_mismatch_uses_probe_confirmation(sw, monkeypatch):
+    catcher = SignalCatcher()
+    w = make_watcher(monkeypatch, platform="win32", wts_available=True, wts_probe=True)
+    w.session_locked.connect(catcher.on_locked)
+    w.session_unlocked.connect(catcher.on_unlocked)
+
+    monkeypatch.setattr(sw.SessionWatcher, "_probe_initial_state_wts", lambda self: False)
+    w._handle_wts_event(sw.WTS_SESSION_LOCK, session_id=99, active_console=1)
+    assert w.is_unlocked() is False
+
+    monkeypatch.setattr(sw.SessionWatcher, "_probe_initial_state_wts", lambda self: True)
+    w._handle_wts_event(sw.WTS_SESSION_UNLOCK, session_id=99, active_console=1)
+    assert w.is_unlocked() is True
+    assert catcher.events == ["locked", "unlocked"]
+
+
 def test_desktop_probe_fallback_unlocked(sw, monkeypatch):
     # WTS probe None -> fall back to desktop probe True
     w = make_watcher(monkeypatch, platform="win32", wts_available=True, wts_probe=None, desktop_probe=True)

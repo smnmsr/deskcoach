@@ -23,7 +23,9 @@ def test_load_config_from_custom_path(tmp_path: Path):
         [app]
         base_url = "http://example.com"
         poll_minutes = 2.5
+        start_of_day_hour = 6
         stand_threshold_mm = 880
+        stand_goal_mm = 300
         remind_after_minutes = 40
         remind_repeat_minutes = 7
         standing_check_after_minutes = 12
@@ -34,7 +36,9 @@ def test_load_config_from_custom_path(tmp_path: Path):
     ns = load_config(cfg_path).app
     assert ns.base_url == "http://example.com"
     assert ns.poll_minutes == 2.5
+    assert ns.start_of_day_hour == 6
     assert ns.stand_threshold_mm == 880
+    assert ns.stand_goal_mm == 300
     assert ns.remind_after_minutes == 40
     assert ns.remind_repeat_minutes == 7
     assert ns.snooze_minutes == 20
@@ -67,6 +71,7 @@ def test_load_config_creates_in_data_dir_when_missing(tmp_path: Path, monkeypatc
     # Defaults applied (from embedded or package)
     assert isinstance(ns.remind_after_minutes, int)
     assert ns.snooze_minutes == 30
+    assert isinstance(ns.start_of_day_hour, int)
 
 
 def test_load_config_uses_existing_in_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

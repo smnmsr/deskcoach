@@ -59,8 +59,13 @@ class SettingsDialog(QDialog):
         self.poll_minutes.setDecimals(2)
         self.poll_minutes.setValue(float(getattr(appcfg, "poll_minutes", 5)))
         self.poll_minutes.setToolTip("How often to poll the service for new data.")
+        self.start_of_day_hour = QSpinBox()
+        self.start_of_day_hour.setRange(0, 23)
+        self.start_of_day_hour.setValue(int(getattr(appcfg, "start_of_day_hour", 4)))
+        self.start_of_day_hour.setToolTip("Hour considered as the start of a day for statistics (0-23).")
         conn_form.addRow("Base URL", self.base_url)
         conn_form.addRow("Poll interval (minutes)", self.poll_minutes)
+        conn_form.addRow("Day starts at (hour)", self.start_of_day_hour)
         main.addWidget(conn_box)
 
         # Goals & thresholds
@@ -226,6 +231,7 @@ class SettingsDialog(QDialog):
             # Collect values
             base_url = self.base_url.text()
             poll_minutes = float(self.poll_minutes.value())
+            start_of_day_hour = int(self.start_of_day_hour.value())
             stand_threshold_mm = int(self.stand_threshold_mm.value())
             remind_after_minutes = int(self.remind_after_minutes.value())
             remind_repeat_minutes = int(self.remind_repeat_minutes.value())
@@ -241,6 +247,7 @@ class SettingsDialog(QDialog):
                 "[app]\n"
                 f"base_url = \"{base_url}\"\n"
                 f"poll_minutes = {poll_minutes}\n"
+                f"start_of_day_hour = {start_of_day_hour}\n"
                 f"stand_threshold_mm = {stand_threshold_mm}\n"
                 f"remind_after_minutes = {remind_after_minutes}\n"
                 f"remind_repeat_minutes = {remind_repeat_minutes}\n"
@@ -258,9 +265,11 @@ class SettingsDialog(QDialog):
             # Update in-memory config namespace so the rest of the app reflects changes immediately
             try:
                 appcfg = getattr(self._cfg_ns, 'app', None)
+                prev_start_of_day = int(getattr(appcfg, 'start_of_day_hour', 4)) if appcfg is not None else 4
                 if appcfg is not None:
                     appcfg.base_url = base_url
                     appcfg.poll_minutes = poll_minutes
+                    appcfg.start_of_day_hour = start_of_day_hour
                     appcfg.stand_threshold_mm = stand_threshold_mm
                     appcfg.remind_after_minutes = remind_after_minutes
                     appcfg.remind_repeat_minutes = remind_repeat_minutes
@@ -269,7 +278,13 @@ class SettingsDialog(QDialog):
                     appcfg.snooze_minutes = snooze_minutes
                     appcfg.lock_reset_threshold_minutes = lock_reset_threshold_minutes
                     appcfg.log_level = log_level
-                    # Note: stand_goal_mm is currently not part of SimpleNamespace in load_config
+                    appcfg.stand_goal_mm = stand_goal_mm
+                if prev_start_of_day != start_of_day_hour:
+                    try:
+                        from ..models import store
+                        store.clear_daily_aggregates()
+                    except Exception:
+                        pass
             except Exception:
                 pass
 

@@ -245,7 +245,8 @@ def main() -> int:
             # Update daily aggregates for quick UI stats
             try:
                 stand_thr = int(getattr(current_cfg, "stand_threshold_mm", 900))
-                store.update_daily_aggregates_now(stand_thr, ts)
+                day_start_hour = int(getattr(current_cfg, "start_of_day_hour", 4))
+                store.update_daily_aggregates_now(stand_thr, ts, start_of_day_hour=day_start_hour)
             except Exception:
                 pass
             # Feed reminder engine

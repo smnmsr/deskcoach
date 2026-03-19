@@ -121,17 +121,32 @@ def save_session_event(ts: int, event: str) -> None:
 
 # ------------------------ Aggregation helpers ------------------------
 
-def _seconds_since_midnight(ts: int) -> int:
+def _seconds_since_day_start(ts: int, start_of_day_hour: int = 0) -> int:
     dt = datetime.fromtimestamp(ts)
-    return dt.hour * 3600 + dt.minute * 60 + dt.second
+    day_start = dt.replace(hour=int(start_of_day_hour), minute=0, second=0, microsecond=0)
+    if dt < day_start:
+        day_start = day_start - timedelta(days=1)
+    return int((dt - day_start).total_seconds())
 
 
-def _day_bounds_local(ts: int | None = None) -> tuple[int, str]:
-    """Return start-of-day ts for the local date of ts (or now) and date string.
+def _day_bounds_local(ts: int | None = None, start_of_day_hour: int = 0) -> tuple[int, str]:
+    """Return local day-start ts/date based on configurable day start hour.
+
+    The date string is the date of the day-start instant itself, so with a
+    start hour of 4 and a clock time of 03:00 local, the returned date string
+    points to the previous calendar date.
+
     Returns (start_ts, date_str).
     """
+    start_hour = int(start_of_day_hour)
+    if start_hour < 0:
+        start_hour = 0
+    if start_hour > 23:
+        start_hour = 23
     base = datetime.fromtimestamp(ts) if ts is not None else datetime.now()
-    start = base.replace(hour=0, minute=0, second=0, microsecond=0)
+    start = base.replace(hour=start_hour, minute=0, second=0, microsecond=0)
+    if base < start:
+        start = start - timedelta(days=1)
     return int(start.timestamp()), start.strftime("%Y-%m-%d")
 
 
@@ -241,18 +256,26 @@ def upsert_daily_aggregate(date_str: str, sitting_sec: int, standing_sec: int, u
         conn.commit()
 
 
-def update_daily_aggregates_now(stand_threshold_mm: int, now_ts: int | None = None) -> None:
-    """Recompute today's aggregates from midnight until now and upsert."""
+def update_daily_aggregates_now(
+    stand_threshold_mm: int,
+    now_ts: int | None = None,
+    start_of_day_hour: int = 0,
+) -> None:
+    """Recompute current-day aggregates from configured day start until now and upsert."""
     now = int(now_ts if now_ts is not None else datetime.now().timestamp())
-    start_ts, date_str = _day_bounds_local(now)
+    start_ts, date_str = _day_bounds_local(now, start_of_day_hour)
     sitting, standing = compute_day_aggregates(start_ts, now, stand_threshold_mm)
     upsert_daily_aggregate(date_str, sitting, standing, now)
 
 
-def get_today_aggregates(stand_threshold_mm: int, now_ts: int | None = None) -> tuple[int, int]:
-    """Return (sitting_sec, standing_sec) for today, recomputing if needed."""
+def get_today_aggregates(
+    stand_threshold_mm: int,
+    now_ts: int | None = None,
+    start_of_day_hour: int = 0,
+) -> tuple[int, int]:
+    """Return (sitting_sec, standing_sec) for configured "today", recomputing if needed."""
     now = int(now_ts if now_ts is not None else datetime.now().timestamp())
-    start_ts, date_str = _day_bounds_local(now)
+    start_ts, date_str = _day_bounds_local(now, start_of_day_hour)
     # Try read existing row first
     path = db_path()
     try:
@@ -274,46 +297,57 @@ def get_today_aggregates(stand_threshold_mm: int, now_ts: int | None = None) -> 
     return sitting, standing
 
 
-def get_yesterday_aggregates_until_same_time(stand_threshold_mm: int, now_ts: int | None = None) -> tuple[int, int]:
-    """Return yesterday's (sitting_sec, standing_sec) up to the same clock time as now.
+def get_yesterday_aggregates_until_same_time(
+    stand_threshold_mm: int,
+    now_ts: int | None = None,
+    start_of_day_hour: int = 0,
+) -> tuple[int, int]:
+    """Return previous configured-day aggregates up to the same elapsed day time.
 
     Notes
     -----
     This function computes the values on-the-fly from raw measurement samples
     and session lock/unlock events for the window:
-      [yesterday 00:00:00 local, yesterday 00:00:00 + seconds_since_midnight(now)).
+      [prev_day_start local, prev_day_start + seconds_since_day_start(now)).
     It intentionally does not read from the ``daily_aggregates`` table. By
     design we only upsert today's aggregate row for quick UI reads; comparing
     to yesterday uses direct computation so you may not see a ``daily_aggregates``
     entry for yesterday. That is expected.
     """
     now = int(now_ts if now_ts is not None else datetime.now().timestamp())
-    # Determine seconds since midnight for now
-    sec_since_midnight = _seconds_since_midnight(now)
-    # Compute yesterday's start and end
-    today_start_ts, _ = _day_bounds_local(now)
+    sec_since_day_start = _seconds_since_day_start(now, start_of_day_hour)
+    today_start_ts, _ = _day_bounds_local(now, start_of_day_hour)
     y_start_ts = today_start_ts - 24 * 3600
-    y_end_ts = y_start_ts + sec_since_midnight
+    y_end_ts = y_start_ts + sec_since_day_start
     return compute_day_aggregates(y_start_ts, y_end_ts, stand_threshold_mm)
 
 
 
-def _day_bounds_for_date_str(date_str: str) -> tuple[int, int]:
-    """Return (start_ts, end_ts) for the given local date string YYYY-MM-DD."""
+def _day_bounds_for_date_str(date_str: str, start_of_day_hour: int = 0) -> tuple[int, int]:
+    """Return (start_ts, end_ts) for date_str and configured day start hour."""
     try:
         dt = datetime.strptime(date_str, "%Y-%m-%d")
     except Exception:
         # Fallback to today
-        start_ts, _ = _day_bounds_local(None)
+        start_ts, _ = _day_bounds_local(None, start_of_day_hour)
         return start_ts, start_ts + 24 * 3600
-    start = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    start_hour = int(start_of_day_hour)
+    if start_hour < 0:
+        start_hour = 0
+    if start_hour > 23:
+        start_hour = 23
+    start = dt.replace(hour=start_hour, minute=0, second=0, microsecond=0)
     start_ts = int(start.timestamp())
     return start_ts, start_ts + 24 * 3600
 
 
-def compute_full_day_aggregates_for_date(date_str: str, stand_threshold_mm: int) -> tuple[int, int]:
+def compute_full_day_aggregates_for_date(
+    date_str: str,
+    stand_threshold_mm: int,
+    start_of_day_hour: int = 0,
+) -> tuple[int, int]:
     """Compute seated/standing seconds for the full local day given by date_str."""
-    start_ts, end_ts = _day_bounds_for_date_str(date_str)
+    start_ts, end_ts = _day_bounds_for_date_str(date_str, start_of_day_hour)
     return compute_day_aggregates(start_ts, end_ts, stand_threshold_mm)
 
 
@@ -336,7 +370,11 @@ def get_aggregate_for_date(date_str: str) -> tuple[int, int] | None:
 essentially_no_data_sentinel = (-1, -1)  # internal use to mark no compute
 
 
-def ensure_daily_aggregate(date_str: str, stand_threshold_mm: int) -> tuple[int, int]:
+def ensure_daily_aggregate(
+    date_str: str,
+    stand_threshold_mm: int,
+    start_of_day_hour: int = 0,
+) -> tuple[int, int]:
     """Ensure daily_aggregates has a row for date_str; compute and upsert if missing.
     Returns (sitting_sec, standing_sec).
     """
@@ -344,7 +382,7 @@ def ensure_daily_aggregate(date_str: str, stand_threshold_mm: int) -> tuple[int,
     if existing is not None:
         return existing
     # Compute once and persist
-    sitting, standing = compute_full_day_aggregates_for_date(date_str, stand_threshold_mm)
+    sitting, standing = compute_full_day_aggregates_for_date(date_str, stand_threshold_mm, start_of_day_hour)
     try:
         now_ts = int(datetime.now().timestamp())
         upsert_daily_aggregate(date_str, sitting, standing, now_ts)
@@ -353,17 +391,25 @@ def ensure_daily_aggregate(date_str: str, stand_threshold_mm: int) -> tuple[int,
     return sitting, standing
 
 
-def get_yesterday_full_aggregate(stand_threshold_mm: int, now_ts: int | None = None) -> tuple[int, int]:
+def get_yesterday_full_aggregate(
+    stand_threshold_mm: int,
+    now_ts: int | None = None,
+    start_of_day_hour: int = 0,
+) -> tuple[int, int]:
     """Return full-day (sitting_sec, standing_sec) for yesterday, ensuring it's cached."""
     now = int(now_ts if now_ts is not None else datetime.now().timestamp())
-    today_start_ts, today_str = _day_bounds_local(now)
+    today_start_ts, _today_str = _day_bounds_local(now, start_of_day_hour)
     # Compute yesterday's date string
     y_dt = datetime.fromtimestamp(today_start_ts) - timedelta(days=1)
     y_str = y_dt.strftime("%Y-%m-%d")
-    return ensure_daily_aggregate(y_str, stand_threshold_mm)
+    return ensure_daily_aggregate(y_str, stand_threshold_mm, start_of_day_hour)
 
 
-def backfill_past_aggregates(stand_threshold_mm: int, upto_now_ts: int | None = None) -> None:
+def backfill_past_aggregates(
+    stand_threshold_mm: int,
+    upto_now_ts: int | None = None,
+    start_of_day_hour: int = 0,
+) -> None:
     """Backfill daily_aggregates for all full past days based on measurements.
 
     - Finds the first measurement timestamp and iterates through each local date
@@ -383,9 +429,9 @@ def backfill_past_aggregates(stand_threshold_mm: int, upto_now_ts: int | None = 
     if first_ts is None:
         return  # nothing to backfill
     # Start from local date of first_ts
-    start_of_first, _ = _day_bounds_local(first_ts)
+    start_of_first, _ = _day_bounds_local(first_ts, start_of_day_hour)
     start_dt = datetime.fromtimestamp(start_of_first)
-    today_start_ts, _ = _day_bounds_local(now)
+    today_start_ts, _ = _day_bounds_local(now, start_of_day_hour)
     # Iterate day by day until yesterday
     cur_dt = start_dt
     yesterday_dt = datetime.fromtimestamp(today_start_ts) - timedelta(days=1)
@@ -396,7 +442,7 @@ def backfill_past_aggregates(stand_threshold_mm: int, upto_now_ts: int | None = 
                 # Skip if exists
                 row = conn.execute("SELECT 1 FROM daily_aggregates WHERE date=?", (ds,)).fetchone()
                 if not row:
-                    s, t = compute_full_day_aggregates_for_date(ds, stand_threshold_mm)
+                    s, t = compute_full_day_aggregates_for_date(ds, stand_threshold_mm, start_of_day_hour)
                     upsert_daily_aggregate(ds, s, t, int(now))
                 cur_dt = cur_dt + timedelta(days=1)
     except Exception:

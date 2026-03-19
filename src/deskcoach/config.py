@@ -28,7 +28,9 @@ _DEFAULT_CONFIG_TOML = b"""
 [app]
 base_url = "http://moss_table_watcher.zhaw.ch"
 poll_minutes = 1.0
+start_of_day_hour = 4
 stand_threshold_mm = 850
+stand_goal_mm = 240
 remind_after_minutes = 45
 remind_repeat_minutes = 5
 standing_check_after_minutes = 5
@@ -125,7 +127,13 @@ def load_config(path: Optional[Path | str] = None) -> SimpleNamespace:
     app = data.get("app", {})
     base_url = str(app.get("base_url", "http://localhost"))
     poll_minutes = float(app.get("poll_minutes", 5))
+    start_of_day_hour = int(app.get("start_of_day_hour", 4))
+    if start_of_day_hour < 0:
+        start_of_day_hour = 0
+    if start_of_day_hour > 23:
+        start_of_day_hour = 23
     stand_threshold_mm = int(app.get("stand_threshold_mm", 900))
+    stand_goal_mm = int(app.get("stand_goal_mm", 240))
     remind_after_minutes = int(app.get("remind_after_minutes", 45))
     remind_repeat_minutes = int(app.get("remind_repeat_minutes", 5))
     snooze_minutes = int(app.get("snooze_minutes", 30))
@@ -138,7 +146,9 @@ def load_config(path: Optional[Path | str] = None) -> SimpleNamespace:
         app=SimpleNamespace(
             base_url=base_url,
             poll_minutes=poll_minutes,
+            start_of_day_hour=start_of_day_hour,
             stand_threshold_mm=stand_threshold_mm,
+            stand_goal_mm=stand_goal_mm,
             remind_after_minutes=remind_after_minutes,
             remind_repeat_minutes=remind_repeat_minutes,
             snooze_minutes=snooze_minutes,
@@ -149,7 +159,7 @@ def load_config(path: Optional[Path | str] = None) -> SimpleNamespace:
         )
     )
     log.debug(
-        "Loaded config: base_url=%s, poll_minutes=%s, stand_threshold_mm=%s, remind_after=%s, repeat=%s, snooze=%s, lock_reset_threshold_minutes=%s, stand_after=%s, stand_repeat=%s, log_level=%s",
-        base_url, poll_minutes, stand_threshold_mm, remind_after_minutes, remind_repeat_minutes, snooze_minutes, lock_reset_threshold_minutes, standing_check_after_minutes, standing_check_repeat_minutes, log_level,
+        "Loaded config: base_url=%s, poll_minutes=%s, start_of_day_hour=%s, stand_threshold_mm=%s, stand_goal_mm=%s, remind_after=%s, repeat=%s, snooze=%s, lock_reset_threshold_minutes=%s, stand_after=%s, stand_repeat=%s, log_level=%s",
+        base_url, poll_minutes, start_of_day_hour, stand_threshold_mm, stand_goal_mm, remind_after_minutes, remind_repeat_minutes, snooze_minutes, lock_reset_threshold_minutes, standing_check_after_minutes, standing_check_repeat_minutes, log_level,
     )
     return ns

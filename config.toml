@@ -1,7 +1,9 @@
 [app]
 base_url = "http://moss_table_watcher.zhaw.ch"
 poll_minutes = 1.0
+start_of_day_hour = 4
 stand_threshold_mm = 850
+stand_goal_mm = 240
 remind_after_minutes = 45
 remind_repeat_minutes = 5
 standing_check_after_minutes = 5

@@ -314,6 +314,10 @@ class MainWindow(QMainWindow):
             stand_thr = int(getattr(self._cfg_ns.app, "stand_threshold_mm", 900))
         except Exception:
             stand_thr = 900
+        try:
+            day_start_hour = int(getattr(self._cfg_ns.app, "start_of_day_hour", 4))
+        except Exception:
+            day_start_hour = 4
         # Confirm
         try:
             res = QMessageBox.question(
@@ -344,8 +348,8 @@ class MainWindow(QMainWindow):
         def _work():
             try:
                 store.clear_daily_aggregates()
-                store.backfill_past_aggregates(stand_thr)
-                store.update_daily_aggregates_now(stand_thr)
+                store.backfill_past_aggregates(stand_thr, start_of_day_hour=day_start_hour)
+                store.update_daily_aggregates_now(stand_thr, start_of_day_hour=day_start_hour)
             except Exception:
                 pass
             finally:
@@ -370,15 +374,16 @@ class MainWindow(QMainWindow):
     def refresh_stats(self) -> None:
         try:
             stand_thr = int(getattr(self._cfg_ns.app, "stand_threshold_mm", 900))
+            day_start_hour = int(getattr(self._cfg_ns.app, "start_of_day_hour", 4))
             # One-time backfill of past days to avoid on-the-fly comparisons
             if not hasattr(self, "_backfill_done") or not self._backfill_done:
                 try:
-                    store.backfill_past_aggregates(stand_thr)
+                    store.backfill_past_aggregates(stand_thr, start_of_day_hour=day_start_hour)
                 except Exception:
                     pass
                 self._backfill_done = True
-            today_sit, today_stand = store.get_today_aggregates(stand_thr)
-            y_sit, y_stand = store.get_yesterday_full_aggregate(stand_thr)
+            today_sit, today_stand = store.get_today_aggregates(stand_thr, start_of_day_hour=day_start_hour)
+            y_sit, y_stand = store.get_yesterday_full_aggregate(stand_thr, start_of_day_hour=day_start_hour)
         except Exception:
             # If anything goes wrong, don't crash the UI
             self._set_empty_state()
