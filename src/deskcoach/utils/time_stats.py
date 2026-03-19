@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from typing import Iterable, List, Sequence, Tuple
 
 # Types
@@ -7,6 +8,26 @@ from typing import Iterable, List, Sequence, Tuple
 Measurement = Tuple[int, int]
 # Lock intervals are half-open ranges [start_ts, end_ts)
 LockInterval = Tuple[int, int]
+
+
+def format_stats_window(now: datetime, start_of_day_hour: int) -> tuple[str, str]:
+    """Return main-window label/tooltip clarifying the active stats window."""
+    hour = max(0, min(23, int(start_of_day_hour)))
+    day_start = now.replace(hour=hour, minute=0, second=0, microsecond=0)
+    is_previous_day_window = now < day_start
+    if is_previous_day_window:
+        day_start = day_start - timedelta(days=1)
+
+    label = f"Stats window: {hour:02d}:00 -> now"
+    if is_previous_day_window:
+        label = f"{label} (previous day: {day_start.strftime('%a, %b %d')})"
+
+    tooltip = (
+        f"Your stats day starts at {hour:02d}:00 local time. "
+        f"DeskCoach counts activity from the most recent {hour:02d}:00 to now. "
+        "If it's earlier than that, this active window belongs to the previous date."
+    )
+    return label, tooltip
 
 
 def _overlap_len(a0: int, a1: int, b0: int, b1: int) -> int:

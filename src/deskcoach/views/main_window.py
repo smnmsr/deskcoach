@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QPushButton, QHBoxLayout, QMessageBox
 from PyQt6.QtCore import QTimer, Qt
 from pathlib import Path
@@ -19,6 +20,7 @@ except Exception:  # pragma: no cover
 
 from .settings_dialog import SettingsDialog
 from ..models import store
+from ..utils.time_stats import format_stats_window
 
 
 class MainWindow(QMainWindow):
@@ -60,6 +62,14 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
         v.addWidget(self._header)
+
+        # Active stats window (respects configurable start-of-day)
+        self._stats_window_lbl = QLabel("", central)
+        try:
+            self._stats_window_lbl.setProperty("dc", "muted")
+        except Exception:
+            pass
+        v.addWidget(self._stats_window_lbl)
 
         # Summary pill before cards
         self._summary_pill = QLabel("", central)
@@ -301,6 +311,16 @@ class MainWindow(QMainWindow):
             self._date_lbl.setText("Today")
         except Exception:
             pass
+        try:
+            day_start_hour = int(getattr(self._cfg_ns.app, "start_of_day_hour", 4))
+        except Exception:
+            day_start_hour = 4
+        try:
+            text, tip = format_stats_window(datetime.now(), day_start_hour)
+            self._stats_window_lbl.setText(text)
+            self._stats_window_lbl.setToolTip(tip)
+        except Exception:
+            pass
         for card in (self._stand_card, self._sit_card):
             try:
                 card.value_lbl.setText("—")
@@ -391,8 +411,11 @@ class MainWindow(QMainWindow):
 
         # Header: date and streak
         try:
-            from datetime import datetime
-            self._date_lbl.setText(datetime.now().strftime("%a, %b %d"))
+            now_local = datetime.now()
+            self._date_lbl.setText(now_local.strftime("%a, %b %d"))
+            window_text, window_tip = format_stats_window(now_local, day_start_hour)
+            self._stats_window_lbl.setText(window_text)
+            self._stats_window_lbl.setToolTip(window_tip)
             streak = self._streak_days()
             self._streak_lbl.setVisible(bool(streak))
             if streak:
